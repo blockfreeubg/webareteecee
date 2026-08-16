@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>PC Stream Viewer</title>
+  <title>PC Stream Viewer (Diagnostic)</title>
 </head>
 <body>
   <h1>📺 PC Stream Viewer</h1>
@@ -21,10 +21,15 @@
     const dummyStream = new MediaStream();
     let peer = null;
     let call = null;
+    let connectionTimeout = null;
 
-    // Initialize viewer peer
+    function log(msg) {
+      console.log('[Viewer]', msg);
+    }
+
     function initPeer() {
       peer = new Peer({
+        debug: 2, // extra PeerJS logs
         config: {
           iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
@@ -35,59 +40,75 @@
       });
 
       peer.on('open', (id) => {
-        console.log('Viewer peer ready, ID:', id);
+        log('Peer ready, my ID: ' + id);
         statusEl.textContent = 'Viewer ready – click Connect';
       });
 
       peer.on('error', (err) => {
-        console.error('Viewer peer error:', err);
+        log('Peer error: ' + err.message);
         statusEl.textContent = 'Peer error: ' + err.message;
       });
     }
 
-    // Connect to broadcaster
     function connect() {
       if (!peer) initPeer();
       statusEl.textContent = `Calling ${PEER_ID}...`;
-      console.log('Calling', PEER_ID);
+      log('Calling ' + PEER_ID);
 
       if (call) call.close();
-
       call = peer.call(PEER_ID, dummyStream);
 
+      // Log call events
       call.on('stream', (remoteStream) => {
-        console.log('✅ Received remote stream');
-        console.log('Tracks:', remoteStream.getTracks().map(t => `${t.kind}:${t.readyState}`));
-
+        clearTimeout(connectionTimeout);
+        log('✅ Received remote stream');
+        log('Tracks: ' + remoteStream.getTracks().map(t => `${t.kind}:${t.readyState}`));
         statusEl.textContent = 'Connected!';
         videoEl.srcObject = remoteStream;
-        videoEl.load();  // force reload
+        videoEl.load();
         videoEl.play()
-          .then(() => console.log('Video playing'))
+          .then(() => log('Video playing'))
           .catch(err => {
-            console.error('Autoplay failed:', err);
+            log('Autoplay failed: ' + err.message);
             statusEl.textContent = 'Click ▶ Play Video to start';
           });
       });
 
       call.on('close', () => {
-        console.log('Call closed');
+        clearTimeout(connectionTimeout);
+        log('Call closed');
         statusEl.textContent = 'Connection closed';
       });
 
       call.on('error', (err) => {
-        console.error('Call error:', err);
+        clearTimeout(connectionTimeout);
+        log('Call error: ' + err.message);
         statusEl.textContent = 'Call error: ' + err.message;
       });
+
+      // Log ICE connection state changes
+      if (call.peerConnection) {
+        call.peerConnection.addEventListener('connectionstatechange', () => {
+          log('ICE connection state: ' + call.peerConnection.connectionState);
+          statusEl.textContent = `ICE state: ${call.peerConnection.connectionState}`;
+        });
+        call.peerConnection.addEventListener('iceconnectionstatechange', () => {
+          log('ICE connection state (legacy): ' + call.peerConnection.iceConnectionState);
+        });
+      }
+
+      // Timeout if no stream after 10 seconds
+      connectionTimeout = setTimeout(() => {
+        if (!videoEl.srcObject) {
+          log('❌ Timeout: no stream received after 10s');
+          statusEl.textContent = 'Timeout – no stream. Check broadcaster console.';
+        }
+      }, 10000);
     }
 
-    // Event listeners
     document.getElementById('connectBtn').addEventListener('click', connect);
-    document.getElementById('playBtn').addEventListener('click', () => {
-      videoEl.play().catch(e => console.error(e));
-    });
+    document.getElementById('playBtn').addEventListener('click', () => videoEl.play().catch(e => log(e)));
 
-    // Auto-init on page load (optional)
     initPeer();
   </script>
 </body>
