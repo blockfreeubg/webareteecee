@@ -2,36 +2,36 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>PC Stream Viewer</title>
+  <title>PC Stream Viewer + Remote Control</title>
 </head>
 <body>
   <h1>📺 PC Stream Viewer</h1>
   <video id="remoteVideo" autoplay playsinline muted controls
-         style="width:100%; max-width:800px; background:#000;"></video>
+         style="width:100%; max-width:800px; background:#000; cursor: crosshair;"></video>
   <br>
-  <button id="connectBtn">🔗 Connect to Broadcaster</button>
-  <button id="playBtn">▶ Play Video</button>
+  <button id="connectBtn">🔗 Connect</button>
+  <button id="playBtn">▶ Play</button>
   <p>Status: <span id="status">not connected</span></p>
+  <p>Remote control: <span id="ctrlStatus">inactive</span> – click on the video to enable</p>
 
   <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
   <script>
     const PEER_ID = new URLSearchParams(location.search).get('id') || 'duderucoolpc123';
     const statusEl = document.getElementById('status');
     const videoEl = document.getElementById('remoteVideo');
+    const ctrlStatus = document.getElementById('ctrlStatus');
     let peer = null;
     let call = null;
+    let dataChannel = null; // will hold the call object, which supports send()
+    let isControlling = false;
 
-    // Create a dummy stream with a real video track (from a canvas)
+    // Dummy stream with video track (canvas)
     function createDummyStream() {
       const canvas = document.createElement('canvas');
-      canvas.width = 1;
-      canvas.height = 1;
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = 'black';
-      ctx.fillRect(0, 0, 1, 1);
-      return canvas.captureStream(1); // 1 fps – enough for a real video track
+      canvas.width = 1; canvas.height = 1;
+      canvas.getContext('2d').fillRect(0,0,1,1);
+      return canvas.captureStream(1);
     }
-
     const dummyStream = createDummyStream();
 
     function log(msg) {
@@ -68,42 +68,100 @@
       if (call) call.close();
       call = peer.call(PEER_ID, dummyStream);
 
-      // Increase timeout to 20 seconds
-      const connectionTimeout = setTimeout(() => {
-        if (!videoEl.srcObject) {
-          log('❌ Timeout: no stream received after 20s');
-          statusEl.textContent = 'Timeout – no stream. Check broadcaster console.';
-        }
-      }, 20000);
-
       call.on('stream', (remoteStream) => {
-        clearTimeout(connectionTimeout);
         log('✅ Received remote stream');
-        log('Tracks: ' + remoteStream.getTracks().map(t => `${t.kind}:${t.readyState}`));
         statusEl.textContent = 'Connected!';
         videoEl.srcObject = remoteStream;
         videoEl.load();
-        videoEl.play()
-          .then(() => log('Video playing'))
-          .catch(err => {
-            log('Autoplay failed: ' + err.message);
-            statusEl.textContent = 'Click ▶ Play Video to start';
-          });
+        videoEl.play().catch(err => {
+          log('Autoplay failed: ' + err.message);
+          statusEl.textContent = 'Click ▶ Play to start';
+        });
       });
 
       call.on('close', () => {
-        clearTimeout(connectionTimeout);
         log('Call closed');
         statusEl.textContent = 'Connection closed';
       });
 
       call.on('error', (err) => {
-        clearTimeout(connectionTimeout);
         log('Call error: ' + err.message);
         statusEl.textContent = 'Call error: ' + err.message;
       });
     }
 
+    // ---------- Remote control event handling ----------
+
+    function sendData(data) {
+      if (call && call.open) {
+        call.send(data);
+        log('Sent: ' + JSON.stringify(data));
+      } else {
+        log('No active call, cannot send');
+      }
+    }
+
+    function enableRemoteControl() {
+      isControlling = true;
+      ctrlStatus.textContent = 'active (clicking video gives focus)';
+    }
+
+    function disableRemoteControl() {
+      isControlling = false;
+      ctrlStatus.textContent = 'inactive';
+    }
+
+    // Mouse move (throttled)
+    let lastMoveSent = 0;
+    videoEl.addEventListener('mousemove', (e) => {
+      if (!isControlling) return;
+      const now = Date.now();
+      if (now - lastMoveSent < 50) return; // 20 events/sec max
+      lastMoveSent = now;
+
+      const rect = videoEl.getBoundingClientRect();
+      const scaleX = videoEl.videoWidth / rect.width;
+      const scaleY = videoEl.videoHeight / rect.height;
+      const x = Math.round((e.clientX - rect.left) * scaleX);
+      const y = Math.round((e.clientY - rect.top) * scaleY);
+
+      sendData({ type: 'mousemove', x, y });
+    });
+
+    // Mouse click
+    videoEl.addEventListener('mousedown', (e) => {
+      if (!isControlling) return;
+      sendData({ type: 'mousedown', button: e.button });
+      e.preventDefault();
+    });
+    videoEl.addEventListener('mouseup', (e) => {
+      if (!isControlling) return;
+      sendData({ type: 'mouseup', button: e.button });
+      e.preventDefault();
+    });
+
+    // Keyboard
+    document.addEventListener('keydown', (e) => {
+      if (!isControlling) return;
+      sendData({ type: 'keydown', key: e.key, code: e.code });
+      e.preventDefault();
+    });
+    document.addEventListener('keyup', (e) => {
+      if (!isControlling) return;
+      sendData({ type: 'keyup', key: e.key, code: e.code });
+      e.preventDefault();
+    });
+
+    // Toggle remote control when clicking on the video
+    videoEl.addEventListener('click', () => {
+      if (!isControlling) {
+        enableRemoteControl();
+      } else {
+        disableRemoteControl();
+      }
+    });
+
+    // Buttons
     document.getElementById('connectBtn').addEventListener('click', connect);
     document.getElementById('playBtn').addEventListener('click', () => videoEl.play().catch(e => log(e)));
 
