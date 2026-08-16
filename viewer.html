@@ -9,8 +9,9 @@
   <video id="remoteVideo" autoplay playsinline muted controls
          style="width:100%; max-width:800px; background:#000;"></video>
   <br>
-  <button onclick="document.getElementById('remoteVideo').play()">▶ Play (if grey)</button>
-  <p>Status: <span id="status">connecting...</span></p>
+  <button id="connectBtn">🔗 Connect to Broadcaster</button>
+  <button id="playBtn">▶ Play Video</button>
+  <p>Status: <span id="status">not connected</span></p>
 
   <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
   <script>
@@ -18,67 +19,76 @@
     const statusEl = document.getElementById('status');
     const videoEl = document.getElementById('remoteVideo');
     const dummyStream = new MediaStream();
+    let peer = null;
     let call = null;
 
-    const peer = new Peer({
-      config: {
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-          { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
-        ]
-      }
-    });
+    // Initialize viewer peer
+    function initPeer() {
+      peer = new Peer({
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+            { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
+          ]
+        }
+      });
 
-    peer.on('open', () => {
-      statusEl.textContent = `Calling ${PEER_ID}... (will retry every 3s)`;
-      attemptCall();
-    });
+      peer.on('open', (id) => {
+        console.log('Viewer peer ready, ID:', id);
+        statusEl.textContent = 'Viewer ready – click Connect';
+      });
 
-    peer.on('error', (err) => {
-      statusEl.textContent = 'Peer error: ' + err.message;
-    });
+      peer.on('error', (err) => {
+        console.error('Viewer peer error:', err);
+        statusEl.textContent = 'Peer error: ' + err.message;
+      });
+    }
 
-    function attemptCall() {
-      if (call) {
-        call.close();
-      }
-      try {
-        call = peer.call(PEER_ID, dummyStream);
+    // Connect to broadcaster
+    function connect() {
+      if (!peer) initPeer();
+      statusEl.textContent = `Calling ${PEER_ID}...`;
+      console.log('Calling', PEER_ID);
 
-        call.on('stream', (remoteStream) => {
-          statusEl.textContent = 'Connected!';
-          videoEl.srcObject = remoteStream;
-          videoEl.play().catch(() => {
-            statusEl.textContent = 'Connected – click Play button';
+      if (call) call.close();
+
+      call = peer.call(PEER_ID, dummyStream);
+
+      call.on('stream', (remoteStream) => {
+        console.log('✅ Received remote stream');
+        console.log('Tracks:', remoteStream.getTracks().map(t => `${t.kind}:${t.readyState}`));
+
+        statusEl.textContent = 'Connected!';
+        videoEl.srcObject = remoteStream;
+        videoEl.load();  // force reload
+        videoEl.play()
+          .then(() => console.log('Video playing'))
+          .catch(err => {
+            console.error('Autoplay failed:', err);
+            statusEl.textContent = 'Click ▶ Play Video to start';
           });
-          clearTimeout(retryTimeout);
-        });
+      });
 
-        call.on('close', () => {
-          statusEl.textContent = 'Connection closed – retrying...';
-          scheduleRetry();
-        });
+      call.on('close', () => {
+        console.log('Call closed');
+        statusEl.textContent = 'Connection closed';
+      });
 
-        call.on('error', (err) => {
-          statusEl.textContent = 'Call failed – retrying...';
-          scheduleRetry();
-        });
-      } catch (err) {
-        statusEl.textContent = 'Call error – retrying...';
-        scheduleRetry();
-      }
+      call.on('error', (err) => {
+        console.error('Call error:', err);
+        statusEl.textContent = 'Call error: ' + err.message;
+      });
     }
 
-    let retryTimeout;
-    function scheduleRetry() {
-      clearTimeout(retryTimeout);
-      retryTimeout = setTimeout(() => {
-        if (statusEl.textContent.includes('Connected')) return;
-        statusEl.textContent = `Retrying call to ${PEER_ID}...`;
-        attemptCall();
-      }, 3000);
-    }
+    // Event listeners
+    document.getElementById('connectBtn').addEventListener('click', connect);
+    document.getElementById('playBtn').addEventListener('click', () => {
+      videoEl.play().catch(e => console.error(e));
+    });
+
+    // Auto-init on page load (optional)
+    initPeer();
   </script>
 </body>
 </html>
