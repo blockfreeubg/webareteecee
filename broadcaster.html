@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>PC Stream Broadcaster</title>
+  <title>PC Stream Broadcaster + Remote Control</title>
 </head>
 <body>
   <h1>🖥️ PC Stream Broadcaster</h1>
@@ -16,6 +16,19 @@
     const statusEl = document.getElementById('status');
     let localStream = null;
     let peer = null;
+    let ws = null;
+
+    // Connect to local Python input server
+    function connectWebSocket() {
+      ws = new WebSocket('ws://localhost:8765');
+      ws.onopen = () => console.log('[Broadcaster] Connected to input server');
+      ws.onerror = (e) => console.error('[Broadcaster] WebSocket error', e);
+      ws.onclose = () => {
+        console.log('[Broadcaster] WebSocket closed, retrying in 2s');
+        setTimeout(connectWebSocket, 2000);
+      };
+    }
+    connectWebSocket();
 
     function log(msg) {
       console.log('[Broadcaster]', msg);
@@ -25,7 +38,7 @@
       try {
         localStream = await navigator.mediaDevices.getDisplayMedia({
           video: true,
-          audio: true
+          audio: false  // keep audio off for simplicity
         });
         log('Screen capture started');
         log('Tracks: ' + localStream.getTracks().map(t => `${t.kind}:${t.readyState}`));
@@ -69,18 +82,15 @@
         log('📞 Incoming call');
         statusEl.textContent = 'Incoming call, answering...';
 
-        // Guard: ensure we have a live video track
         const videoTrack = localStream?.getVideoTracks()[0];
         if (!videoTrack || videoTrack.readyState !== 'live') {
-          log('❌ ERROR: No live video track to share!');
+          log('❌ ERROR: No live video track!');
           statusEl.textContent = '❌ No screen capture active. Click Start Sharing Screen first.';
           call.close();
           return;
         }
 
-        // Create a stream with only the video track to match the viewer's offer
-        const videoOnlyStream = new MediaStream([videoTrack]);
-        call.answer(videoOnlyStream);
+        call.answer(new MediaStream([videoTrack]));
 
         call.on('close', () => {
           log('Viewer disconnected');
@@ -89,6 +99,16 @@
         call.on('error', (err) => {
           log('Call error: ' + err.message);
           statusEl.textContent = 'Call error: ' + err.message;
+        });
+
+        // ✅ Handle incoming data channel messages (remote control commands)
+        call.on('data', (data) => {
+          log('Received data from viewer: ' + JSON.stringify(data));
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify(data));
+          } else {
+            log('WebSocket not open, dropping data');
+          }
         });
 
         // Log ICE state
