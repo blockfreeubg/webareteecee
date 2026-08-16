@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>PC Stream Broadcaster (Diagnostic)</title>
+  <title>PC Stream Broadcaster (Guarded)</title>
 </head>
 <body>
   <h1>🖥️ PC Stream Broadcaster</h1>
@@ -51,7 +51,6 @@
 
     function initPeer() {
       peer = new Peer(PEER_ID, {
-        debug: 2,
         config: {
           iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
@@ -69,6 +68,15 @@
       peer.on('call', (call) => {
         log('📞 Incoming call');
         statusEl.textContent = 'Incoming call, answering...';
+
+        // ✅ Guard: ensure localStream exists and has a video track
+        if (!localStream || localStream.getVideoTracks().length === 0 || localStream.getVideoTracks()[0].readyState !== 'live') {
+          log('❌ ERROR: No live video track to share! Did you click "Start Sharing Screen"?');
+          statusEl.textContent = '❌ No screen capture active. Click Start Sharing Screen first.';
+          call.close();
+          return;
+        }
+
         call.answer(localStream);
 
         call.on('close', () => {
