@@ -8,29 +8,19 @@
   <h1>🖥️ PC Stream Broadcaster</h1>
   <button id="startBtn">Start Sharing Screen</button>
   <p>Status: <span id="status">idle</span></p>
-
-  <!-- Local preview will appear here -->
   <div id="previewContainer"></div>
 
   <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
   <script>
-    // Use a fixed ID (change to something unique, no special chars)
-    const PEER_ID = new URLSearchParams(location.search).get('id') || 'dude-ru-cool-pc';
+    const PEER_ID = new URLSearchParams(location.search).get('id') || 'duderucoolpc123';
     const statusEl = document.getElementById('status');
     let localStream = null;
     let peer = null;
 
     document.getElementById('startBtn').addEventListener('click', async () => {
       try {
-        // Ask user which screen/window/tab to share
-        localStream = await navigator.mediaDevices.getDisplayMedia({
-          video: true,
-          audio: true
-        });
-
-        // Show local preview
+        localStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
         showLocalPreview(localStream);
-
         statusEl.textContent = 'Screen captured. Initializing peer...';
         initPeer();
       } catch (err) {
@@ -47,8 +37,6 @@
       video.muted = true;
       video.playsInline = true;
       video.style.width = '200px';
-      video.style.border = '1px solid #ccc';
-      video.style.marginTop = '10px';
       container.appendChild(video);
     }
 
@@ -57,27 +45,18 @@
         config: {
           iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
-            {
-              urls: 'turn:openrelay.metered.ca:80',
-              username: 'openrelayproject',
-              credential: 'openrelayproject'
-            },
-            {
-              urls: 'turn:openrelay.metered.ca:443',
-              username: 'openrelayproject',
-              credential: 'openrelayproject'
-            }
+            { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+            { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
           ]
         }
       });
 
       peer.on('open', (id) => {
-        statusEl.textContent = `Peer ID: ${id} — waiting for viewers`;
+        statusEl.textContent = `✅ Peer ready! ID: ${id} — waiting for viewers...`;
       });
 
-      // When a viewer calls, answer with our screen stream
       peer.on('call', (call) => {
-        statusEl.textContent = 'Viewer connected, answering...';
+        statusEl.textContent = '📞 Incoming call from viewer, answering...';
         call.answer(localStream);
         call.on('close', () => {
           statusEl.textContent = 'Viewer disconnected';
@@ -88,7 +67,7 @@
       });
 
       peer.on('error', (err) => {
-        statusEl.textContent = 'Peer error: ' + err.message;
+        statusEl.textContent = '❌ Peer error: ' + err.message;
       });
     }
   </script>
