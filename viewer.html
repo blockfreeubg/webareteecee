@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>PC Stream Viewer (Diagnostic)</title>
+  <title>PC Stream Viewer</title>
 </head>
 <body>
   <h1>📺 PC Stream Viewer</h1>
@@ -18,10 +18,22 @@
     const PEER_ID = new URLSearchParams(location.search).get('id') || 'duderucoolpc123';
     const statusEl = document.getElementById('status');
     const videoEl = document.getElementById('remoteVideo');
-    const dummyStream = new MediaStream();
     let peer = null;
     let call = null;
-    let connectionTimeout = null;
+
+    // Create a dummy stream with a real video track (from a canvas)
+    function createDummyStream() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1;
+      canvas.height = 1;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = 'black';
+      ctx.fillRect(0, 0, 1, 1);
+      // Capture at 1 fps – the track is real, but the content is just black
+      return canvas.captureStream(1);
+    }
+
+    const dummyStream = createDummyStream();
 
     function log(msg) {
       console.log('[Viewer]', msg);
@@ -29,7 +41,6 @@
 
     function initPeer() {
       peer = new Peer({
-        debug: 2, // extra PeerJS logs
         config: {
           iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
@@ -58,9 +69,7 @@
       if (call) call.close();
       call = peer.call(PEER_ID, dummyStream);
 
-      // Log call events
       call.on('stream', (remoteStream) => {
-        clearTimeout(connectionTimeout);
         log('✅ Received remote stream');
         log('Tracks: ' + remoteStream.getTracks().map(t => `${t.kind}:${t.readyState}`));
         statusEl.textContent = 'Connected!';
@@ -75,35 +84,14 @@
       });
 
       call.on('close', () => {
-        clearTimeout(connectionTimeout);
         log('Call closed');
         statusEl.textContent = 'Connection closed';
       });
 
       call.on('error', (err) => {
-        clearTimeout(connectionTimeout);
         log('Call error: ' + err.message);
         statusEl.textContent = 'Call error: ' + err.message;
       });
-
-      // Log ICE connection state changes
-      if (call.peerConnection) {
-        call.peerConnection.addEventListener('connectionstatechange', () => {
-          log('ICE connection state: ' + call.peerConnection.connectionState);
-          statusEl.textContent = `ICE state: ${call.peerConnection.connectionState}`;
-        });
-        call.peerConnection.addEventListener('iceconnectionstatechange', () => {
-          log('ICE connection state (legacy): ' + call.peerConnection.iceConnectionState);
-        });
-      }
-
-      // Timeout if no stream after 10 seconds
-      connectionTimeout = setTimeout(() => {
-        if (!videoEl.srcObject) {
-          log('❌ Timeout: no stream received after 10s');
-          statusEl.textContent = 'Timeout – no stream. Check broadcaster console.';
-        }
-      }, 10000);
     }
 
     document.getElementById('connectBtn').addEventListener('click', connect);
