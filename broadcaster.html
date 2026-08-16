@@ -19,26 +19,31 @@
 
     document.getElementById('startBtn').addEventListener('click', async () => {
       try {
-        localStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-        showLocalPreview(localStream);
+        localStream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: true
+        });
+        console.log('Screen capture started, tracks:', localStream.getTracks().map(t => `${t.kind}:${t.readyState}`));
+
+        // Show local preview
+        const container = document.getElementById('previewContainer');
+        container.innerHTML = '';
+        const video = document.createElement('video');
+        video.srcObject = localStream;
+        video.autoplay = true;
+        video.muted = true;
+        video.playsInline = true;
+        video.style.width = '300px';
+        video.style.marginTop = '10px';
+        container.appendChild(video);
+
         statusEl.textContent = 'Screen captured. Initializing peer...';
         initPeer();
       } catch (err) {
+        console.error('Screen capture failed:', err);
         statusEl.textContent = 'Error: ' + err.message;
       }
     });
-
-    function showLocalPreview(stream) {
-      const container = document.getElementById('previewContainer');
-      container.innerHTML = '';
-      const video = document.createElement('video');
-      video.srcObject = stream;
-      video.autoplay = true;
-      video.muted = true;
-      video.playsInline = true;
-      video.style.width = '200px';
-      container.appendChild(video);
-    }
 
     function initPeer() {
       peer = new Peer(PEER_ID, {
@@ -52,21 +57,26 @@
       });
 
       peer.on('open', (id) => {
+        console.log('Broadcaster peer ready, ID:', id);
         statusEl.textContent = `✅ Peer ready! ID: ${id} — waiting for viewers...`;
       });
 
       peer.on('call', (call) => {
-        statusEl.textContent = '📞 Incoming call from viewer, answering...';
+        console.log('📞 Incoming call from viewer');
+        statusEl.textContent = 'Incoming call, answering...';
         call.answer(localStream);
         call.on('close', () => {
+          console.log('Viewer disconnected');
           statusEl.textContent = 'Viewer disconnected';
         });
         call.on('error', (err) => {
+          console.error('Call error:', err);
           statusEl.textContent = 'Call error: ' + err.message;
         });
       });
 
       peer.on('error', (err) => {
+        console.error('Broadcaster peer error:', err);
         statusEl.textContent = '❌ Peer error: ' + err.message;
       });
     }
