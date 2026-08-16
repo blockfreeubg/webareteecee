@@ -29,8 +29,7 @@
       const ctx = canvas.getContext('2d');
       ctx.fillStyle = 'black';
       ctx.fillRect(0, 0, 1, 1);
-      // Capture at 1 fps – the track is real, but the content is just black
-      return canvas.captureStream(1);
+      return canvas.captureStream(1); // 1 fps – enough for a real video track
     }
 
     const dummyStream = createDummyStream();
@@ -69,7 +68,16 @@
       if (call) call.close();
       call = peer.call(PEER_ID, dummyStream);
 
+      // Increase timeout to 20 seconds
+      const connectionTimeout = setTimeout(() => {
+        if (!videoEl.srcObject) {
+          log('❌ Timeout: no stream received after 20s');
+          statusEl.textContent = 'Timeout – no stream. Check broadcaster console.';
+        }
+      }, 20000);
+
       call.on('stream', (remoteStream) => {
+        clearTimeout(connectionTimeout);
         log('✅ Received remote stream');
         log('Tracks: ' + remoteStream.getTracks().map(t => `${t.kind}:${t.readyState}`));
         statusEl.textContent = 'Connected!';
@@ -84,11 +92,13 @@
       });
 
       call.on('close', () => {
+        clearTimeout(connectionTimeout);
         log('Call closed');
         statusEl.textContent = 'Connection closed';
       });
 
       call.on('error', (err) => {
+        clearTimeout(connectionTimeout);
         log('Call error: ' + err.message);
         statusEl.textContent = 'Call error: ' + err.message;
       });
