@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>PC Stream Broadcaster (Guarded)</title>
+  <title>PC Stream Broadcaster</title>
 </head>
 <body>
   <h1>🖥️ PC Stream Broadcaster</h1>
@@ -69,15 +69,18 @@
         log('📞 Incoming call');
         statusEl.textContent = 'Incoming call, answering...';
 
-        // ✅ Guard: ensure localStream exists and has a video track
-        if (!localStream || localStream.getVideoTracks().length === 0 || localStream.getVideoTracks()[0].readyState !== 'live') {
-          log('❌ ERROR: No live video track to share! Did you click "Start Sharing Screen"?');
+        // Guard: ensure we have a live video track
+        const videoTrack = localStream?.getVideoTracks()[0];
+        if (!videoTrack || videoTrack.readyState !== 'live') {
+          log('❌ ERROR: No live video track to share!');
           statusEl.textContent = '❌ No screen capture active. Click Start Sharing Screen first.';
           call.close();
           return;
         }
 
-        call.answer(localStream);
+        // Create a stream with only the video track to match the viewer's offer
+        const videoOnlyStream = new MediaStream([videoTrack]);
+        call.answer(videoOnlyStream);
 
         call.on('close', () => {
           log('Viewer disconnected');
