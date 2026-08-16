@@ -3,26 +3,40 @@
 <head>
   <meta charset="UTF-8">
   <title>PC Stream Viewer + Remote Control</title>
+  <style>
+    #remoteVideo {
+      width: 100%;
+      max-width: 800px;
+      background: #000;
+      cursor: crosshair;
+      outline: none;
+    }
+    .control-panel {
+      margin-top: 10px;
+    }
+  </style>
 </head>
 <body>
   <h1>📺 PC Stream Viewer</h1>
-  <video id="remoteVideo" autoplay playsinline muted controls
-         style="width:100%; max-width:800px; background:#000; cursor: crosshair;"></video>
-  <br>
-  <button id="connectBtn">🔗 Connect</button>
-  <button id="playBtn">▶ Play</button>
-  <p>Status: <span id="status">not connected</span></p>
-  <p>Remote control: <span id="ctrlStatus">inactive</span> – click on the video to enable</p>
+  <video id="remoteVideo" autoplay playsinline muted tabindex="0"></video>
+  <div class="control-panel">
+    <button id="connectBtn">🔗 Connect</button>
+    <button id="playBtn">▶ Play</button>
+    <button id="enableCtrlBtn">🖱️ Enable Remote Control</button>
+    <span id="status">not connected</span>
+  </div>
 
   <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
   <script>
     const PEER_ID = new URLSearchParams(location.search).get('id') || 'duderucoolpc123';
     const statusEl = document.getElementById('status');
     const videoEl = document.getElementById('remoteVideo');
-    const ctrlStatus = document.getElementById('ctrlStatus');
+    const connectBtn = document.getElementById('connectBtn');
+    const playBtn = document.getElementById('playBtn');
+    const enableCtrlBtn = document.getElementById('enableCtrlBtn');
+
     let peer = null;
     let call = null;
-    let dataChannel = null; // will hold the call object, which supports send()
     let isControlling = false;
 
     // Dummy stream with video track (canvas)
@@ -82,6 +96,7 @@
       call.on('close', () => {
         log('Call closed');
         statusEl.textContent = 'Connection closed';
+        isControlling = false;
       });
 
       call.on('error', (err) => {
@@ -90,7 +105,7 @@
       });
     }
 
-    // ---------- Remote control event handling ----------
+    // ---------- Remote Control Handling ----------
 
     function sendData(data) {
       if (call && call.open) {
@@ -101,22 +116,34 @@
       }
     }
 
-    function enableRemoteControl() {
+    // Enable remote control
+    enableCtrlBtn.addEventListener('click', async () => {
+      if (!call || !call.open) {
+        alert('Not connected to broadcaster yet.');
+        return;
+      }
+      // Set focus to video for keyboard events
+      videoEl.focus();
       isControlling = true;
-      ctrlStatus.textContent = 'active (clicking video gives focus)';
-    }
+      statusEl.textContent = 'Remote control ACTIVE – move mouse over video, click, and type';
+      log('Remote control enabled');
+    });
 
-    function disableRemoteControl() {
-      isControlling = false;
-      ctrlStatus.textContent = 'inactive';
-    }
+    // Disable remote control (optional: click button again or press Escape)
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && isControlling) {
+        isControlling = false;
+        statusEl.textContent = 'Remote control disabled';
+        log('Remote control disabled');
+      }
+    });
 
-    // Mouse move (throttled)
+    // Mouse move (throttled to 50ms)
     let lastMoveSent = 0;
     videoEl.addEventListener('mousemove', (e) => {
       if (!isControlling) return;
       const now = Date.now();
-      if (now - lastMoveSent < 50) return; // 20 events/sec max
+      if (now - lastMoveSent < 50) return;
       lastMoveSent = now;
 
       const rect = videoEl.getBoundingClientRect();
@@ -128,42 +155,40 @@
       sendData({ type: 'mousemove', x, y });
     });
 
-    // Mouse click
+    // Mouse down/up – prevent default to avoid video seeking/play/pause
     videoEl.addEventListener('mousedown', (e) => {
       if (!isControlling) return;
-      sendData({ type: 'mousedown', button: e.button });
       e.preventDefault();
+      sendData({ type: 'mousedown', button: e.button });
     });
     videoEl.addEventListener('mouseup', (e) => {
       if (!isControlling) return;
-      sendData({ type: 'mouseup', button: e.button });
       e.preventDefault();
+      sendData({ type: 'mouseup', button: e.button });
+    });
+    // Prevent context menu
+    videoEl.addEventListener('contextmenu', (e) => {
+      if (isControlling) e.preventDefault();
     });
 
-    // Keyboard
+    // Keyboard events (capture on document to catch all keys)
     document.addEventListener('keydown', (e) => {
       if (!isControlling) return;
-      sendData({ type: 'keydown', key: e.key, code: e.code });
       e.preventDefault();
+      sendData({ type: 'keydown', key: e.key, code: e.code });
     });
     document.addEventListener('keyup', (e) => {
       if (!isControlling) return;
-      sendData({ type: 'keyup', key: e.key, code: e.code });
       e.preventDefault();
+      sendData({ type: 'keyup', key: e.key, code: e.code });
     });
 
-    // Toggle remote control when clicking on the video
-    videoEl.addEventListener('click', () => {
-      if (!isControlling) {
-        enableRemoteControl();
-      } else {
-        disableRemoteControl();
-      }
+    // Play button
+    playBtn.addEventListener('click', () => {
+      videoEl.play().catch(e => log(e));
     });
 
-    // Buttons
-    document.getElementById('connectBtn').addEventListener('click', connect);
-    document.getElementById('playBtn').addEventListener('click', () => videoEl.play().catch(e => log(e)));
+    connectBtn.addEventListener('click', connect);
 
     initPeer();
   </script>
