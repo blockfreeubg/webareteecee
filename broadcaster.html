@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>PC Stream Broadcaster</title>
+  <title>PC Stream Broadcaster (Diagnostic)</title>
 </head>
 <body>
   <h1>🖥️ PC Stream Broadcaster</h1>
@@ -17,13 +17,18 @@
     let localStream = null;
     let peer = null;
 
+    function log(msg) {
+      console.log('[Broadcaster]', msg);
+    }
+
     document.getElementById('startBtn').addEventListener('click', async () => {
       try {
         localStream = await navigator.mediaDevices.getDisplayMedia({
           video: true,
           audio: true
         });
-        console.log('Screen capture started, tracks:', localStream.getTracks().map(t => `${t.kind}:${t.readyState}`));
+        log('Screen capture started');
+        log('Tracks: ' + localStream.getTracks().map(t => `${t.kind}:${t.readyState}`));
 
         // Show local preview
         const container = document.getElementById('previewContainer');
@@ -34,19 +39,19 @@
         video.muted = true;
         video.playsInline = true;
         video.style.width = '300px';
-        video.style.marginTop = '10px';
         container.appendChild(video);
 
         statusEl.textContent = 'Screen captured. Initializing peer...';
         initPeer();
       } catch (err) {
-        console.error('Screen capture failed:', err);
+        log('Screen capture failed: ' + err.message);
         statusEl.textContent = 'Error: ' + err.message;
       }
     });
 
     function initPeer() {
       peer = new Peer(PEER_ID, {
+        debug: 2,
         config: {
           iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
@@ -57,26 +62,34 @@
       });
 
       peer.on('open', (id) => {
-        console.log('Broadcaster peer ready, ID:', id);
+        log('Peer ready, ID: ' + id);
         statusEl.textContent = `✅ Peer ready! ID: ${id} — waiting for viewers...`;
       });
 
       peer.on('call', (call) => {
-        console.log('📞 Incoming call from viewer');
+        log('📞 Incoming call');
         statusEl.textContent = 'Incoming call, answering...';
         call.answer(localStream);
+
         call.on('close', () => {
-          console.log('Viewer disconnected');
+          log('Viewer disconnected');
           statusEl.textContent = 'Viewer disconnected';
         });
         call.on('error', (err) => {
-          console.error('Call error:', err);
+          log('Call error: ' + err.message);
           statusEl.textContent = 'Call error: ' + err.message;
         });
+
+        // Log ICE state
+        if (call.peerConnection) {
+          call.peerConnection.addEventListener('connectionstatechange', () => {
+            log('ICE connection state: ' + call.peerConnection.connectionState);
+          });
+        }
       });
 
       peer.on('error', (err) => {
-        console.error('Broadcaster peer error:', err);
+        log('Peer error: ' + err.message);
         statusEl.textContent = '❌ Peer error: ' + err.message;
       });
     }
